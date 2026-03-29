@@ -1,0 +1,28 @@
+{
+  "name": "fitness-coach-mcp",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-01-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "observability": {
+    "enabled": true
+  },
+
+  "vars": {},
+
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["FitnessMCP"]
+    }
+  ],
+
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "FitnessMCP",
+        "class_name": "FitnessMCP"
+      }
+    ]
+  }
+}
