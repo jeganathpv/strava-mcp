@@ -197,6 +197,6 @@ export default {
         headers: { "Content-Type": "application/json" },
       });
     }
-    return FitnessMCP.serve("/mcp").fetch(request, env, ctx);
+    return FitnessMCP.serve("/mcp", { binding: "FitnessMCP" }).fetch(request, env, ctx);
   },
 };
