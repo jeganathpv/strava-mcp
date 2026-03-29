@@ -197,6 +197,10 @@ export default {
         headers: { "Content-Type": "application/json" },
       });
     }
+    if (url.pathname === "/sse" || url.pathname === "/sse/message") {
+      return FitnessMCP.serveSSE("/sse", { binding: "FitnessMCP" }).fetch(request, env, ctx);
+    }
+
     return FitnessMCP.serve("/mcp", { binding: "FitnessMCP" }).fetch(request, env, ctx);
   },
 };
