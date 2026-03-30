@@ -1,9 +1,14 @@
-# 🏋️ Fitness Coach MCP — Cloudflare Workers Setup
+# Fitness Coach MCP — Cloudflare Workers
+
+Connects Claude to Strava via MCP protocol. Deployed as a Cloudflare Worker with Durable Objects.
+
+---
 
 ## Prerequisites
-- Node.js 18+ installed
-- A Cloudflare account (free) → https://dash.cloudflare.com/sign-up
-- Your Strava Client ID, Client Secret, and Refresh Token (from earlier steps)
+
+- Node.js 20+ installed
+- A Cloudflare account → https://dash.cloudflare.com/sign-up
+- A Strava API app → https://www.strava.com/settings/api
 
 ---
 
@@ -20,11 +25,42 @@ npm install
 ```bash
 npx wrangler login
 ```
-This opens a browser → log in → authorize Wrangler. One time only.
+
+Opens a browser → log in → authorize Wrangler. One time only.
 
 ---
 
-## Step 3 — Add Strava secrets
+## Step 3 — Get Strava OAuth refresh token
+
+The refresh token must be obtained with the correct scopes: `read`, `activity:read_all`, `activity:write`.
+
+**1. Open this URL in your browser** (replace `YOUR_CLIENT_ID`):
+```
+https://www.strava.com/oauth/authorize?client_id=YOUR_CLIENT_ID&redirect_uri=http://localhost&response_type=code&scope=read,activity:read_all,activity:write
+```
+
+**2.** After clicking Authorize, the browser redirects to `localhost` (will fail to load — that's fine).
+Copy the `code=` value from the URL bar:
+```
+http://localhost/?state=&code=COPY_THIS&scope=read,activity:read_all,activity:write
+```
+
+**3. Exchange the code for tokens:**
+```bash
+curl -X POST https://www.strava.com/oauth/token \
+  -d client_id=YOUR_CLIENT_ID \
+  -d client_secret=YOUR_CLIENT_SECRET \
+  -d code=YOUR_CODE \
+  -d grant_type=authorization_code
+```
+
+Copy the `refresh_token` from the response.
+
+> **Note:** The callback URL in your Strava app settings can stay as `http://localhost` — the Worker never handles OAuth redirects. The refresh token flow is used at runtime, not the callback.
+
+---
+
+## Step 4 — Add Strava secrets to Cloudflare
 
 Run each command and paste the value when prompted:
 
@@ -34,103 +70,57 @@ npx wrangler secret put STRAVA_CLIENT_SECRET
 npx wrangler secret put STRAVA_REFRESH_TOKEN
 ```
 
-These are stored encrypted in Cloudflare — never in your code.
+Secrets are stored encrypted in Cloudflare — never in your code.
+
+> **Updating secrets:** If your refresh token expires or you need to re-authorize, just run `npx wrangler secret put STRAVA_REFRESH_TOKEN` again. No redeploy needed.
 
 ---
 
-## Step 4 — Deploy
+## Step 5 — Deploy
 
 ```bash
 npm run deploy
 ```
 
-You'll get a permanent URL like:
+You'll get a permanent URL:
 ```
 https://fitness-coach-mcp.YOUR-NAME.workers.dev
 ```
 
-Your MCP endpoint is:
-```
-https://fitness-coach-mcp.YOUR-NAME.workers.dev/mcp
-```
-
 ---
 
-## Step 5 — Update Strava App Callback Domain
-
-1. Go to https://www.strava.com/settings/api
-2. Update **Authorization Callback Domain** to:
-   ```
-   fitness-coach-mcp.YOUR-NAME.workers.dev
-   ```
-3. Update **Website** to:
-   ```
-   https://fitness-coach-mcp.YOUR-NAME.workers.dev
-   ```
-
----
-
-## Step 6 — Re-do OAuth to get fresh Refresh Token
-
-Since the domain changed, get a new refresh token:
-
-**Open this URL in browser** (replace YOUR_CLIENT_ID):
-```
-https://www.strava.com/oauth/authorize?client_id=YOUR_CLIENT_ID&response_type=code&redirect_uri=https://fitness-coach-mcp.YOUR-NAME.workers.dev/callback&approval_prompt=force&scope=read,activity:read_all,activity:write
-```
-
-Copy the `code` from the redirect URL, then run:
-```bash
-curl -X POST https://www.strava.com/oauth/token \
-  -d client_id=YOUR_CLIENT_ID \
-  -d client_secret=YOUR_CLIENT_SECRET \
-  -d code=YOUR_CODE \
-  -d grant_type=authorization_code
-```
-
-Update the secret with the new refresh token:
-```bash
-npx wrangler secret put STRAVA_REFRESH_TOKEN
-```
-
----
-
-## Step 7 — Add to Claude.ai
+## Step 6 — Add to Claude.ai
 
 1. Go to **claude.ai → Settings → Connectors**
 2. Click **Add custom connector**
 3. Name: `Strava Fitness Coach`
-4. URL: `https://fitness-coach-mcp.YOUR-NAME.workers.dev/mcp`
+4. URL: `https://fitness-coach-mcp.YOUR-NAME.workers.dev/sse`
 5. Click **Add**
 
-Also connect **Notion** from the native connectors directory.
-
----
-
-## Step 8 — Create your Claude Project
-
-1. Go to **claude.ai → Projects → New Project**
-2. Name: `🏋️ Fitness Coach`
-3. Paste contents of `SYSTEM_PROMPT.md` into Project Instructions
-4. Enable both connectors: Strava + Notion
-
----
-
-## Done! Log from anywhere 📱
-
-From mobile, web, or desktop — just paste your workout text into the project.
-Claude handles everything automatically.
+> Use the `/sse` endpoint — Claude.ai web requires SSE transport.
+> The `/mcp` endpoint (Streamable HTTP) is available for Claude Desktop / Claude Code.
 
 ---
 
 ## Health Check
 
-Verify your server is running:
 ```
 https://fitness-coach-mcp.YOUR-NAME.workers.dev/health
 ```
 
-Should return: `{"status":"ok","server":"fitness-coach-mcp"}`
+Returns: `{"status":"ok"}`
+
+---
+
+## MCP Tools
+
+| Tool | Scope required | What it does |
+|---|---|---|
+| `get_latest_activity` | `activity:read_all` | Fetch today's activity, filter by type |
+| `get_activity_detail` | `activity:read_all` | Full splits, laps, HR, power by ID |
+| `get_week_activities` | `activity:read_all` | All sessions for Mon–Sun week |
+| `update_activity_description` | `activity:write` | Write description back to Strava |
+| `get_athlete_stats` | `read` | YTD totals and recent stats |
 
 ---
 
@@ -140,16 +130,3 @@ After any code changes:
 ```bash
 npm run deploy
 ```
-That's it — live in seconds globally.
-
----
-
-## MCP Tools
-
-| Tool | What it does |
-|---|---|
-| `get_latest_activity` | Fetch today's Strava activity by type |
-| `get_activity_detail` | Full splits, laps, HR, power |
-| `get_week_activities` | All sessions for Mon–Sun week |
-| `update_activity_description` | Write forecast to Strava description |
-| `get_athlete_stats` | YTD totals and recent stats |
