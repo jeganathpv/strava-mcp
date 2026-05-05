@@ -326,6 +326,21 @@ function registerTools(server: McpServer, env: Env) {
     }
   );
 
+  server.registerTool("update_activity_title",
+    { description: "Update a Strava activity title.",
+      inputSchema: { activity_id: z.string(), title: z.string() } },
+    async ({ activity_id, title }) => {
+      const token = await getAccessToken(env);
+      const res = await fetch(`${STRAVA_BASE}/activities/${activity_id}`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ name: title }),
+      });
+      if (!res.ok) throw new Error(`Update failed: ${res.status}`);
+      return { content: [{ type: "text" as const, text: JSON.stringify({ status: "updated", activity_id, title }) }] };
+    }
+  );
+
   server.registerTool("get_athlete_stats",
     { description: "YTD and recent run/ride stats for the athlete." },
     async () => {
